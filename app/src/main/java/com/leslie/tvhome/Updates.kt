@@ -17,7 +17,7 @@ import java.util.concurrent.Executors
 /** Checks official stable releases; APK identity and signature are verified before installation. */
 object Updates {
     data class Product(val name: String, val repo: String, val pkg: String)
-    val products = listOf(Product("Tigris home screen", "lesnolie/Tigris", "com.leslie.tvhome"),
+    val products = listOf(Product("Tigris home screen", "luumlabs/Tigris", "com.leslie.tvhome"),
         Product("MiracastReceiver casting", "weekdayjast/MiracastReceiver", "com.weekd.miracastreceiver"))
     private const val MIRACAST_CERT = "ea7f4568203d294bd37acac966d6d707f79147549d24c2244f58a6fbc27a6291"
     val executor = Executors.newSingleThreadExecutor()
