@@ -10,8 +10,8 @@ android {
         applicationId = "com.leslie.tvhome"
         minSdk = 28
         targetSdk = 31
-        versionCode = 15
-        versionName = "2.1.0"
+        versionCode = 16
+        versionName = "2.1.1"
     }
 
     // standard declares itself a home screen. guard does not: TCL's package verifier refuses any
