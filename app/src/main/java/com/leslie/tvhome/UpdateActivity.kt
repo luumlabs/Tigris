@@ -90,7 +90,7 @@ class UpdateActivity : Activity() {
         }.start()
         val check = button("Check for updates") { work { Updates.check(applicationContext) } }
         lateinit var auto: TextView
-        fun autoLabel() = "Auto update" + if (Updates.prefs(this).getBoolean("auto", false)) "On" else "Off"
+        fun autoLabel() = "Auto update    " + if (Updates.prefs(this).getBoolean("auto", false)) "On" else "Off"
         auto = button(autoLabel()) {
             val prefs = Updates.prefs(this)
             prefs.edit().putBoolean("auto", !prefs.getBoolean("auto", false)).apply()
