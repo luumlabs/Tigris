@@ -172,7 +172,7 @@ class UpdateResult : BroadcastReceiver() {
             val confirmation = intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT) ?: return
             confirmation.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             Updates.notify(context, p, "Please confirm the update install", confirmation)
-            if (UpdateActivity.visible) runCatching { context.startActivity(confirmation) }
+            runCatching { context.startActivity(confirmation) }
         } else {
             val message = if (status == PackageInstaller.STATUS_SUCCESS) "Installed successfully" else "Install incomplete: ${intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)}"
             Updates.prefs(context).edit().remove(p.pkg + ".session").putString(p.pkg + ".status", message).putBoolean(p.pkg + ".available", false).apply()
