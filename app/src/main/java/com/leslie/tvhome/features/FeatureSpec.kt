@@ -57,5 +57,13 @@ object Features {
         lifecycle = "HomeActivity releases playback on pause, screen off, intro and destroy; no background service",
         testMethod = "Transfer tests, both-flavor builds; hardware 4K playback, pause/wake, crop, upload failure and offline fallback",
     )
-    val all = listOf(weather, liquidGlass, dock, hdmi, videoWallpaper)
+    val charts = FeatureSpec(
+        id = "charts", name = "Top 10", purpose = "Optional weekly Top 10 widget with where-to-watch choices",
+        capabilities = emptySet(), settings = setOf("charts_enabled", "charts_country"),
+        defaultEnabled = false, permissions = setOf("android.permission.INTERNET"),
+        fallback = "Show the last charts (kept six hours); US charts where JustWatch has no data for the region",
+        lifecycle = "HomeWidgets loads while enabled and resumed; pictures released when the home screen is hidden",
+        testMethod = "FeatureSpecTest; enable/disable, offline cache, region fallback, chooser with no matching app",
+    )
+    val all = listOf(weather, liquidGlass, dock, hdmi, videoWallpaper, charts)
 }

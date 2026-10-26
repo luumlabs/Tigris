@@ -171,6 +171,16 @@ class Prefs(ctx: Context) {
         get() = sp.getBoolean("weather_fahrenheit", false)
         set(v) = sp.edit().putBoolean("weather_fahrenheit", v).apply()
 
+    /** The Top 10 widget (JustWatch), opt-in like the weather: nothing is requested while false. */
+    var chartsEnabled: Boolean
+        get() = sp.getBoolean("charts_enabled", com.leslie.tvhome.features.Features.charts.defaultEnabled)
+        set(v) = sp.edit().putBoolean("charts_enabled", v).apply()
+
+    /** Two-letter region whose Top 10 to show; empty for the TV's own region ([Charts.country]). */
+    var chartsCountry: String
+        get() = sp.getString("charts_country", "")!!
+        set(v) = sp.edit().putString("charts_country", v.trim().uppercase(java.util.Locale.US)).apply()
+
     /** Chosen by the user via Open-Meteo geocoding, never inferred from IP. */
     var weatherCity: String
         get() = sp.getString("weather_city", "")!!

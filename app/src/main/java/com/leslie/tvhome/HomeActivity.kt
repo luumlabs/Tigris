@@ -73,9 +73,8 @@ class HomeActivity : Activity(), TileAdapter.Listener {
         if (resumed && (key == "background" || key == "wallpaper_video_revision")) applyBackground()
     }
     private lateinit var header: FrameLayout
-    private lateinit var weatherCard: TextView
-    private var weatherLoading = false
-    private var lastWeatherAttempt = 0L
+    /** The optional weather and Top 10 widgets above the dock (off by default). */
+    private lateinit var widgets: HomeWidgets
     private lateinit var clockText: TextView
     /** The large clock top left, with the date above it ([Prefs.CLOCK_LARGE]). */
     private lateinit var bigClock: LinearLayout
@@ -196,7 +195,7 @@ class HomeActivity : Activity(), TileAdapter.Listener {
     private val ticker = object : Runnable {
         override fun run() {
             updateClock()
-            refreshWeather()
+            widgets.refresh()
             applyBackground()
             main.postDelayed(this, 60_000 - System.currentTimeMillis() % 60_000 + 50)
         }
@@ -275,6 +274,7 @@ class HomeActivity : Activity(), TileAdapter.Listener {
         if (!preview) prefs.introBoot = Intro.bootStamp(this)
         sheets.toList().forEach { it.dismiss() }
         control.close()
+        widgets.closeOverlays()
         intro = Intro(this, root, scene, prefs.introSound) {
             intro = null
             if (resumed) applyBackground()
@@ -288,6 +288,7 @@ class HomeActivity : Activity(), TileAdapter.Listener {
         unregisterReceiver(pkgReceiver)
         main.removeCallbacksAndMessages(null)
         control.destroy()
+        widgets.destroy()
         intro?.finish()
         runCatching { unregisterReceiver(screenOn) }
         io.shutdown()
@@ -387,27 +388,11 @@ class HomeActivity : Activity(), TileAdapter.Listener {
         header.addView(icons, FrameLayout.LayoutParams(-2, -2, Gravity.END or Gravity.TOP).apply {
             rightMargin = dp(32); topMargin = dp(26)
         })
-        // Weather is opt-in. The compact translucent card sits below the status icons,
-        // does not steal D-pad focus, and leaves the normal Dock layout unchanged.
-        weatherCard = text(15f, Color.WHITE, weight = 500).apply {
-            maxLines = 2
-            setPadding(dp(17), dp(10), dp(17), dp(10))
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(Color.argb(45, 255, 255, 255))
-                cornerRadius = dp(17).toFloat()
-                setStroke(dp(1), Color.argb(62, 255, 255, 255))
-            }
-            isFocusable = false
-            visibility = if (prefs.weatherEnabled) View.VISIBLE else View.GONE
-        }
-        header.addView(weatherCard, FrameLayout.LayoutParams(dp(310), dp(69),
-            Gravity.TOP or Gravity.END).apply {
-            rightMargin = dp(31); topMargin = dp(79)
-        })
         listOf(netButton, ccButton, avatar).forEach { b ->
             b.setOnKeyListener { _, code, e ->
                 if (e.action != KeyEvent.ACTION_DOWN) false else when {
-                    code == KeyEvent.KEYCODE_DPAD_DOWN -> { focusAt(focusedPos); true }
+                    // Down reaches the widget below, if any is showing, else the dock.
+                    code == KeyEvent.KEYCODE_DPAD_DOWN -> { widgets.nearest(b)?.requestFocus() ?: focusAt(focusedPos); true }
                     code == KeyEvent.KEYCODE_DPAD_RIGHT && b == ccButton && avatar.visibility == View.VISIBLE -> { avatar.requestFocus(); true }
                     code == KeyEvent.KEYCODE_DPAD_LEFT && b == avatar -> { ccButton.requestFocus(); true }
                     else -> false
@@ -419,6 +404,14 @@ class HomeActivity : Activity(), TileAdapter.Listener {
         ccButton.nextFocusRightId = avatar.id
         avatar.nextFocusLeftId = ccButton.id
         scene.addView(header, match())
+        // Weather and Top 10 on Liquid Glass, just above the dock; opt-in, so usually not shown.
+        widgets = HomeWidgets(this, root, repo, io, net, object : HomeWidgets.Callbacks {
+            override fun showSheet(sheet: Sheet, restoreView: View?) { this@HomeActivity.showSheet(sheet, restoreView = restoreView) }
+            override fun setGridBlocked(blocked: Boolean) = this@HomeActivity.setGridBlocked(blocked)
+            override fun focusDock() = focusAt(if (focusedPos < cols) focusedPos else focusedPos % cols)
+            override fun focusHeader() { ccButton.requestFocus() }
+        })
+        widgets.attach(scene, side, dockRect.top)
 
         adapter = TileAdapter(repo, tileW, tileH, this).apply { setHasStableIds(true); dockCount = cols }
         grid = RecyclerView(this).apply {
@@ -464,7 +457,7 @@ class HomeActivity : Activity(), TileAdapter.Listener {
                 val expansion = (off / (rowPitch * 0.7f)).coerceIn(0f, 1f)
                 dock.translationY = -off
                 icons.translationY = -off
-                weatherCard.alpha = 1f - expansion
+                widgets.scrolled(off, expansion)
                 // Off-screen controls must also leave remote-control focus navigation.
                 icons.visibility = if (off > 0f && off >= icons.bottom) View.INVISIBLE else View.VISIBLE
                 dock.alpha = 1f
@@ -478,38 +471,6 @@ class HomeActivity : Activity(), TileAdapter.Listener {
         scene.addView(grid, match())
         header.bringToFront()
         setContentView(root)
-    }
-
-    /** Called by the home-screen minute ticker only; never does network work while off. */
-    private fun refreshWeather() {
-        if (!prefs.weatherEnabled) {
-            weatherCard.visibility = View.GONE
-            lastWeatherAttempt = 0L
-            return
-        }
-        weatherCard.visibility = View.VISIBLE
-        val name = prefs.weatherCity
-        if (name.isBlank()) {
-            weatherCard.text = I18n.text(R.string.weather_weather_pending)
-            return
-        }
-        val city = Weather.City(name, prefs.weatherLatitude, prefs.weatherLongitude)
-        Weather.cached(this, city)?.let { weatherCard.text = Weather.format(it, prefs.weatherFahrenheit) }
-            ?: run { weatherCard.text = I18n.text(R.string.weather_weather_unavailable) }
-        val now = System.currentTimeMillis()
-        if (weatherLoading || now - lastWeatherAttempt < 2 * 60_000L) return
-        weatherLoading = true
-        lastWeatherAttempt = now
-        io.execute {
-            val observed = Weather.load(applicationContext, city)
-            main.post {
-                weatherLoading = false
-                if (!isDestroyed && prefs.weatherEnabled && prefs.weatherCity == city.name) {
-                    weatherCard.text = observed?.let { Weather.format(it, prefs.weatherFahrenheit) }
-                        ?: I18n.text(R.string.weather_weather_unavailable)
-                }
-            }
-        }
     }
 
     /**
@@ -553,6 +514,7 @@ class HomeActivity : Activity(), TileAdapter.Listener {
                 if (!live) {
                     frost.setImageBitmap(blurred)
                     scrollGlass.texture(blurred)
+                    widgets.glass(blurred, bmp)
                     if (!shelfShown) setDock(glass, 1200)
                 }
                 val old = bgPhoto
@@ -617,6 +579,8 @@ class HomeActivity : Activity(), TileAdapter.Listener {
                     if (!shelfShown) {
                         frost.setImageBitmap(blurred)
                         scrollGlass.texture(blurred)
+                        // The widgets' glass follows the video live; there is nothing still to bake.
+                        widgets.glass(blurred, null)
                         // Periodic live frames replace directly; still photos retain their cross-fade.
                         setDock(glass, 0)
                         control.refreshGlass()
@@ -731,8 +695,9 @@ class HomeActivity : Activity(), TileAdapter.Listener {
         shelfShown = v
         if (v) shelf.visibility = View.VISIBLE else bg.visibility = View.VISIBLE
         shelf.animate().cancel()
-        // The large clock gives way to the shelf.
+        // The large clock and the widgets give way to the shelf.
         bigClock.animate().alpha(if (v) 0f else dock.alpha).setDuration(350).start()
+        widgets.shelf(v)
         shelf.animate().alpha(if (v) 1f else 0f).setDuration(if (v) 500 else 350)
             .withEndAction {
                 // The shelf covers the whole screen: stop drawing the photo underneath it.
@@ -779,6 +744,11 @@ class HomeActivity : Activity(), TileAdapter.Listener {
         val style = prefs.clockStyle
         clockText.visibility = if (style == Prefs.CLOCK_CORNER) View.VISIBLE else View.GONE
         bigClock.visibility = if (style == Prefs.CLOCK_LARGE) View.VISIBLE else View.GONE
+        // Above the widgets when there are any, where it had the space to itself otherwise.
+        (bigClock.layoutParams as FrameLayout.LayoutParams).let {
+            val top = (sh * if (widgets.enabled) 0.085f else 0.197f).toInt()
+            if (it.topMargin != top) { it.topMargin = top; bigClock.requestLayout() }
+        }
         updateClock()
     }
 
@@ -825,7 +795,7 @@ class HomeActivity : Activity(), TileAdapter.Listener {
                 grid.post {
                     // On first show the header buttons grab default focus; the grid should have it.
                     val headerOk = header.hasFocus() && !firstFocus
-                    if ((forceFocus || (!grid.hasFocus() && !headerOk)) && sheets.isEmpty() && !control.isOpen) focusAt(idx)
+                    if ((forceFocus || (!grid.hasFocus() && !headerOk)) && sheets.isEmpty() && !control.isOpen && !widgets.holdsFocus()) focusAt(idx)
                     firstFocus = false
                     // A new list can leave the grid between rows; put the focused row back where it belongs.
                     grid.post { grid.focusedChild?.let { grid.layoutManager?.requestChildRectangleOnScreen(grid, it, Rect(), false, true) } }
@@ -1071,8 +1041,10 @@ class HomeActivity : Activity(), TileAdapter.Listener {
             return true
         }
         if (dy < 0 && pos < cols) {
-            // Up from the first row reaches the buttons in the top-right corner.
-            ccButton.requestFocus()
+            // Up from the first row reaches the widget above, or the buttons in the top-right corner.
+            val widget = widgets.nearest(cell)
+            // A Top Shelf still on its way would hide the widgets under the focus.
+            if (widget != null) { hideShelf(); widget.requestFocus() } else ccButton.requestFocus()
             return true
         }
         if (atEdge) {
@@ -1106,15 +1078,17 @@ class HomeActivity : Activity(), TileAdapter.Listener {
 
     // ------------------------------------------------------------ overlays / keys
 
-    fun showSheet(s: Sheet, restoreFocusTo: Int? = null): Sheet {
+    fun showSheet(s: Sheet, restoreFocusTo: Int? = null, restoreView: View? = null): Sheet {
         sheets += s
         setGridBlocked(true)
         s.onDismiss {
             sheets -= s
             if (sheets.isEmpty() && control.isOpen) control.refocus()
+            // Over the full Top 10 (or the forecast), focus goes back to it.
+            else if (sheets.isEmpty() && widgets.overlay != null) widgets.overlay?.requestFocus()
             else if (sheets.isEmpty()) {
                 setGridBlocked(false)
-                focusAt(restoreFocusTo ?: focusedPos)
+                if (restoreView?.isShown == true) restoreView.requestFocus() else focusAt(restoreFocusTo ?: focusedPos)
             }
         }
         return s.show()
@@ -1125,6 +1099,7 @@ class HomeActivity : Activity(), TileAdapter.Listener {
         val mode = if (blocked) ViewGroup.FOCUS_BLOCK_DESCENDANTS else ViewGroup.FOCUS_AFTER_DESCENDANTS
         grid.descendantFocusability = mode
         header.descendantFocusability = mode
+        widgets.setBlocked(blocked)
     }
 
     fun restoreGridFocus() {
@@ -1146,6 +1121,8 @@ class HomeActivity : Activity(), TileAdapter.Listener {
         if (event.action == KeyEvent.ACTION_UP && (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_MENU)) {
             when {
                 sheets.isNotEmpty() -> sheets.last().dismiss()
+                // Closes the forecast or the full Top 10, or goes from a widget back to the dock.
+                widgets.back() -> {}
                 control.isOpen -> control.close()
                 moving >= 0 -> endMove()
                 header.hasFocus() -> focusAt(focusedPos)
@@ -1164,6 +1141,7 @@ class HomeActivity : Activity(), TileAdapter.Listener {
         // Home pressed while already home: close everything and go back to the top.
         sheets.toList().forEach { it.dismiss() }
         control.close()
+        widgets.closeOverlays()
         if (moving >= 0) endMove()
         // The guard brought the screen back (an app exited to the stock launcher): stay where we were.
         if (intent.getBooleanExtra(EXTRA_GUARD, false)) return
@@ -1185,6 +1163,7 @@ class HomeActivity : Activity(), TileAdapter.Listener {
         avatar.visibility = if (prefs.showAvatar) View.VISIBLE else View.GONE
         avatar.setPortrait(SettingsActivity.avatarFile(this)?.let { SettingsActivity.decodeIcon(it, 96) })
         adapter.tvosFocus = prefs.focusTvos(this)
+        widgets.resume()
         applyClockStyle()
         control.applyStyle()
         if (getSystemService(android.os.PowerManager::class.java).isInteractive) consumeWakeIntro()
@@ -1212,7 +1191,18 @@ class HomeActivity : Activity(), TileAdapter.Listener {
         main.removeCallbacks(idleFrame)
         main.removeCallbacks(ticker)
         main.removeCallbacks(shelfAdvance)
+        widgets.pause()
         super.onPause()
+    }
+
+    /**
+     * The keeper service holds this process in memory, so the system can't reclaim it as it does a
+     * home screen behind a video app: the widgets' pictures, which decode again from disk, go as
+     * soon as the home screen is hidden. What is on screen stays.
+     */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= TRIM_MEMORY_UI_HIDDEN && !resumed) widgets.trim()
     }
 
     private fun askAdbAuthorization() {

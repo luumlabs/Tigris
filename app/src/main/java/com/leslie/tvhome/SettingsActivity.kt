@@ -288,6 +288,18 @@ class SettingsActivity : Activity() {
             }
         }
 
+        // The Top 10 widget is opt-in too: JustWatch is asked nothing until it is switched on.
+        section(I18n.text(R.string.i18n_charts_settings))
+        row(I18n.text(R.string.i18n_charts_settings), I18n.text(R.string.i18n_charts_settings_help),
+            { onOff(prefs.chartsEnabled) }) { prefs.chartsEnabled = !prefs.chartsEnabled }
+        row(I18n.text(R.string.i18n_charts_region), I18n.text(R.string.i18n_charts_region_help), {
+            prefs.chartsCountry.ifEmpty { I18n.text(R.string.i18n_charts_region_auto, Charts.country(this)) }
+        }) {
+            val opts = listOf("", "US", "GB", "CA", "AU", "IE", "HK", "TW", "SG", "JP", "KR", "IN", "ES", "MX", "AR", "CO",
+                "CL", "PE", "BR", "PT", "FR", "DE", "IT", "NL", "SE")
+            prefs.chartsCountry = opts[(opts.indexOf(prefs.chartsCountry).coerceAtLeast(0) + 1) % opts.size]
+        }
+
         section(I18n.text(R.string.i18n_settingsactivity_040))
         optionalAssetRow(OptionalAssets.intro, R.string.download_default_intro)
         val video = Intro.videoFile(this) != null || OptionalAssets.file(this, OptionalAssets.intro) != null

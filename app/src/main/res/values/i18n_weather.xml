@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-  <string name="weather_settings">Weather Card</string>
-  <string name="weather_settings_help">Optional Open-Meteo weather on the Home Screen; off by default.</string>
+  <string name="weather_settings">Weather Widget</string>
+  <string name="weather_settings_help">Optional Open-Meteo weather above the dock, on clear glass: the temperature, the next hours, and a six-day forecast on OK. Off by default.</string>
   <string name="weather_city_settings">Weather City</string>
   <string name="weather_city_help">Search for a city. No automatic location detection.</string>
   <string name="weather_choose_city">Choose a City</string>

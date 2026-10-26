@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-  <string name="weather_settings">天气卡片</string>
-  <string name="weather_settings_help">可选的 Open-Meteo 天气卡片，默认关闭。</string>
+  <string name="weather_settings">天气小组件</string>
+  <string name="weather_settings_help">停靠栏上方可选的 Open-Meteo 透明玻璃天气小组件：当前温度、未来几小时，按确认键查看六天预报。默认关闭。</string>
   <string name="weather_city_settings">天气城市</string>
   <string name="weather_city_help">搜索并选择城市，不自动定位。</string>
   <string name="weather_choose_city">选择城市</string>

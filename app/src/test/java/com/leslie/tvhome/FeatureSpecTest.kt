@@ -10,6 +10,10 @@ class FeatureSpecTest {
         assertTrue(Features.weather.supported(28, emptySet()))
         assertFalse(Features.weather.supported(27, emptySet()))
     }
+    @Test fun topTenRemainsOptIn() {
+        assertFalse(Features.charts.defaultEnabled)
+        assertTrue(Features.charts.supported(28, emptySet()))
+    }
     @Test fun hdmiRequiresActualAdapterCapability() {
         assertFalse(Features.hdmi.supported(36, emptySet()))
         assertTrue(Features.hdmi.supported(28, setOf("tv.inputs")))
