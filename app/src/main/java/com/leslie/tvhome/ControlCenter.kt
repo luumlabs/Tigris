@@ -804,6 +804,9 @@ class ControlCenter(private val home: HomeActivity, private val host: FrameLayou
                 v?.target?.takeIf { it.isNotEmpty() }?.let { volumeTarget = it }
                 volume.set(v)
                 inputs = list
+                // Some firmwares register no HDMI inputs with the TV input framework (and boxes have
+                // none): a button that can only say it can't read them is worse than none at all.
+                inputModule.visibility = if (list.isEmpty()) View.GONE else View.VISIBLE
                 inputModule.sub.visibility = View.VISIBLE
                 inputModule.sub.text = list.firstOrNull { it.uri == cur }?.name ?: summary
             }

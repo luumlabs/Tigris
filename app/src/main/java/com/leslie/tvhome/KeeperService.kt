@@ -1,5 +1,6 @@
 package com.leslie.tvhome
 
+import android.app.ActivityManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -13,6 +14,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.os.Process
 import android.provider.Settings
 import java.util.concurrent.Executors
 
@@ -24,6 +26,7 @@ class KeeperService : Service() {
     private val main = Handler(Looper.getMainLooper())
     private val worker = Executors.newSingleThreadExecutor()
     private lateinit var prefs: Prefs
+    private var foregroundStarted = false
 
     private val screenOff = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
@@ -49,14 +52,13 @@ class KeeperService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        // Foreground first, before anything that touches disk. A startForegroundService() start
+        // that has not reached startForeground() after five seconds makes the system throw
+        // RemoteServiceException and kill the launcher; a cold start on a slow TV can burn that
+        // long in Application/Activity startup before this method even runs.
+        startForeground(NOTIFICATION_ID, notification())
+        foregroundStarted = true
         prefs = Prefs(this)
-        val nm = getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel(CH, I18n.text(R.string.i18n_keeperservice_001), NotificationManager.IMPORTANCE_MIN))
-        startForeground(1, Notification.Builder(this, CH)
-            .setSmallIcon(R.drawable.ic_memory)
-            .setContentTitle(I18n.text(R.string.i18n_keeperservice_002))
-            .setContentText(I18n.text(R.string.i18n_keeperservice_003))
-            .build())
         registerReceiver(screenOff, IntentFilter(Intent.ACTION_SCREEN_OFF))
         contentResolver.registerContentObserver(Settings.Global.getUriFor(Settings.Global.ADB_ENABLED), false, adbObserver)
         Guard.ensure(this)
@@ -65,7 +67,22 @@ class KeeperService : Service() {
         schedule()
     }
 
+    private fun notification(): Notification {
+        getSystemService(NotificationManager::class.java)
+            .createNotificationChannel(NotificationChannel(CH, I18n.text(R.string.i18n_keeperservice_001), NotificationManager.IMPORTANCE_MIN))
+        return Notification.Builder(this, CH)
+            .setSmallIcon(R.drawable.ic_memory)
+            .setContentTitle(I18n.text(R.string.i18n_keeperservice_002))
+            .setContentText(I18n.text(R.string.i18n_keeperservice_003))
+            .build()
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // A second start can arrive after the system reclaimed the foreground state.
+        if (!foregroundStarted) {
+            startForeground(NOTIFICATION_ID, notification())
+            foregroundStarted = true
+        }
         if (intent?.action == ACTION_RESCHEDULE) schedule()
         return START_STICKY
     }
@@ -101,10 +118,24 @@ class KeeperService : Service() {
 
     companion object {
         private const val CH = "keeper"
+        private const val NOTIFICATION_ID = 1
         const val ACTION_RESCHEDULE = "reschedule"
 
         fun start(ctx: Context, action: String? = null) {
-            ctx.startForegroundService(Intent(ctx, KeeperService::class.java).setAction(action))
+            val intent = Intent(ctx, KeeperService::class.java).setAction(action)
+            // The home screen calls this while it is already in the foreground: a plain
+            // startService() is enough and cannot miss the five-second foreground-service
+            // deadline that a cold start on a slow TV can blow. Boot and the notification-listener
+            // revival run in the background and still need startForegroundService().
+            if (inForeground(ctx)) ctx.startService(intent) else ctx.startForegroundService(intent)
+        }
+
+        private fun inForeground(ctx: Context): Boolean {
+            val am = ctx.getSystemService(ActivityManager::class.java) ?: return false
+            val pid = Process.myPid()
+            return am.runningAppProcesses?.any {
+                it.pid == pid && it.importance <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND_SERVICE
+            } == true
         }
     }
 }
