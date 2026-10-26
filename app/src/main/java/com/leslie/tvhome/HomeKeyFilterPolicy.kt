@@ -10,13 +10,20 @@ package com.leslie.tvhome
  *
  * Limit the exception to this manufacturer AND OS version until other devices have
  * been tested. Window-state-based home detection remains enabled.
+ *
+ * While Tigris is the default home, Home already comes to it and the guard lets every key
+ * through (HomeGuardService.onKeyEvent), so the stream is not asked for at all: each key
+ * would only detour through the service, and in some apps a press then reads as held and
+ * moves twice.
  */
 internal object HomeKeyFilterPolicy {
     fun shouldRequestFilter(
         apiLevel: Int,
         isCoocaa: Boolean,
         homeFilterRequested: Boolean,
+        isDefaultHome: Boolean = false,
     ): Boolean {
+        if (isDefaultHome) return false
         if (isCoocaa && apiLevel == 30) return false // Android 11 / API 30
         return homeFilterRequested || apiLevel <= 30
     }

@@ -25,10 +25,10 @@ class CoocaaAdapter(ctx: Context) : AndroidAdapter(ctx) {
         if (pickerAvailable()) listOf(Input(URI_PREFIX, I18n.text(R.string.i18n_coocaaadapter_001), "", false)) else emptyList()
     }
 
-    override fun setInput(i: Input) {
+    override fun setInput(i: Input): Boolean {
         if (!i.uri.startsWith(URI_PREFIX)) return super.setInput(i)
-        if (!pickerAvailable()) { Log.w(TAG, "Coocaa source picker unavailable"); return }
-        start(Intent(ACTION_SOURCE_DIALOG).setComponent(PICKER).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK))
+        if (!pickerAvailable()) { Log.w(TAG, "Coocaa source picker unavailable"); return false }
+        return start(Intent(ACTION_SOURCE_DIALOG).setComponent(PICKER).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK))
     }
 
     override fun inputSummary(list: List<Input>) =

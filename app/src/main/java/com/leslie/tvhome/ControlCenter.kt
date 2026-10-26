@@ -164,6 +164,7 @@ class ControlCenter(private val home: HomeActivity, private val host: FrameLayou
     private val status = ctx.text(11f, Color.argb(190, 255, 255, 255))
     private val focusables = ArrayList<View>()
     private val io = Executors.newSingleThreadExecutor()
+    private val switcher = Executors.newSingleThreadExecutor()
     private val tv = TvControls(ctx)
     private val ticker = object : Runnable {
         override fun run() {
@@ -189,7 +190,8 @@ class ControlCenter(private val home: HomeActivity, private val host: FrameLayou
         val power = GlassButton(I18n.text(R.string.i18n_controlcenter_001), R.drawable.ic_power, Shape.TILE) {
             confirm(I18n.text(R.string.i18n_controlcenter_002), I18n.text(R.string.i18n_controlcenter_003)) { Cleaner.shutdown(ctx) }
         }
-        top.addView(power, LinearLayout.LayoutParams(0, cell * 2 + gap, 1f).apply { marginEnd = gap })
+        // The capsules get the wider share: their words must fit, the power tile only has a glyph and a word.
+        top.addView(power, LinearLayout.LayoutParams(0, cell * 2 + gap, 0.8f).apply { marginEnd = gap })
         val right = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; clipChildren = false }
         networkModule = GlassButton(I18n.text(R.string.i18n_controlcenter_004), R.drawable.ic_wifi, Shape.CAPSULE, accent = Color.rgb(48, 222, 239)) {
             close()
@@ -198,7 +200,7 @@ class ControlCenter(private val home: HomeActivity, private val host: FrameLayou
         right.addView(networkModule, LinearLayout.LayoutParams(-1, cell))
         right.addView(GlassButton(I18n.text(R.string.i18n_controlcenter_005), R.drawable.ic_moon, Shape.CAPSULE) { needAdb { close(); Cleaner.sleep(ctx) } },
             LinearLayout.LayoutParams(-1, cell).apply { topMargin = gap })
-        top.addView(right, LinearLayout.LayoutParams(0, -2, 1f))
+        top.addView(right, LinearLayout.LayoutParams(0, -2, 1.2f))
         panel.addView(top)
 
         val utilities = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; clipChildren = false }
@@ -492,10 +494,16 @@ class ControlCenter(private val home: HomeActivity, private val host: FrameLayou
         // Capsules and circles clamp this to half their height.
         private val glass = glassFor(this, ctx.dp(if (shape == Shape.TILE) 24 else 100).toFloat())
         private val glyph = ImageView(ctx)
-        val title = ctx.text(12.5f, weight = 600).apply { text = label; maxLines = 1 }
+        val title = ctx.text(12.5f, weight = 600).apply {
+            text = label
+            isSingleLine = true
+            ellipsize = android.text.TextUtils.TruncateAt.END
+        }
+        /** Swaps the glyph (Wi-Fi or Ethernet), keeping its colour for the focus state. */
+        fun setIcon(res: Int) = glyph.setImageResource(res)
         val sub = ctx.text(10.5f, Color.argb(205, 255, 255, 255), weight = 500).apply {
             visibility = GONE
-            maxLines = 1
+            isSingleLine = true
             ellipsize = android.text.TextUtils.TruncateAt.END
         }
         init {
@@ -506,10 +514,11 @@ class ControlCenter(private val home: HomeActivity, private val host: FrameLayou
             gravity = if (shape == Shape.CAPSULE) Gravity.CENTER_VERTICAL else Gravity.CENTER
             isFocusable = true
             isClickable = true
-            if (shape == Shape.CAPSULE) setPadding(ctx.dp(13), 0, ctx.dp(10), 0)
-            val size = ctx.dp(when (shape) { Shape.TILE -> 40; Shape.CAPSULE -> 20; Shape.ROUND -> 21 })
+            // Half the panel is little room: lean margins so a word like "Connected" fits whole.
+            if (shape == Shape.CAPSULE) setPadding(ctx.dp(11), 0, ctx.dp(8), 0)
+            val size = ctx.dp(when (shape) { Shape.TILE -> 40; Shape.CAPSULE -> 18; Shape.ROUND -> 21 })
             addView(glyph.apply { setImageResource(icon); setColorFilter(accent) },
-                LayoutParams(size, size).apply { if (shape == Shape.CAPSULE) marginEnd = ctx.dp(9) })
+                LayoutParams(size, size).apply { if (shape == Shape.CAPSULE) marginEnd = ctx.dp(7) })
             // Round buttons are icon-only, as on tvOS; the label stays for accessibility.
             when (shape) {
                 Shape.TILE -> addView(title, LayoutParams(-2, -2).apply { topMargin = ctx.dp(8) })
@@ -772,6 +781,7 @@ class ControlCenter(private val home: HomeActivity, private val host: FrameLayou
         blur = null
         blurShader = null
         io.shutdown()
+        switcher.shutdown()
     }
 
     fun refocus() {
@@ -785,8 +795,14 @@ class ControlCenter(private val home: HomeActivity, private val host: FrameLayou
         val cm = ctx.getSystemService(android.net.ConnectivityManager::class.java)
         val caps = runCatching { cm.getNetworkCapabilities(cm.activeNetwork) }.getOrNull()
         val wired = caps?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET) == true
+        // Short words: the capsule is half the panel wide, and a clipped "Connected" read as "Connecting".
         networkModule.title.text = if (wired) I18n.text(R.string.i18n_controlcenter_018) else "Wi-Fi"
-        networkModule.sub.text = if (caps == null) I18n.text(R.string.i18n_controlcenter_019) else I18n.text(R.string.i18n_controlcenter_020)
+        networkModule.sub.text = when {
+            caps == null -> I18n.text(R.string.i18n_controlcenter_019)
+            !caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED) -> I18n.text(R.string.i18n_remote_network_limited)
+            else -> I18n.text(R.string.i18n_controlcenter_020)
+        }
+        networkModule.setIcon(if (wired) R.drawable.ic_ethernet else R.drawable.ic_wifi)
         networkModule.sub.visibility = View.VISIBLE
         if (refreshing) return
         refreshing = true
@@ -815,12 +831,58 @@ class ControlCenter(private val home: HomeActivity, private val host: FrameLayou
         // The list replaces the panel instead of stacking on top of it.
         close()
         val sheet = Sheet(host).title(I18n.text(R.string.i18n_controlcenter_021)).message(null)
-        for (i in inputs) sheet.button(i.name, R.drawable.ic_input) {
-            io.execute { tv.setInput(i) }
-        }
+        for (i in inputs) sheet.button(i.name, R.drawable.ic_input) { switchTo(i) }
         sheet.button(I18n.text(R.string.i18n_controlcenter_022)) { pinInputs() }
         sheet.button(I18n.text(R.string.i18n_controlcenter_023)) {}
         home.showSheet(sheet)
+    }
+
+    /**
+     * Switches to [i], saying so when nothing on the TV took it. On a thread of its own: the
+     * remote's HDMI key through local debugging can take seconds, and the sliders share [io].
+     */
+    fun switchTo(i: Input) {
+        switcher.execute {
+            if (tv.setInput(i)) return@execute
+            host.post {
+                android.widget.Toast.makeText(ctx, if (prefs.adbAuthorized) I18n.text(R.string.i18n_remote_input_failed, i.name)
+                    else I18n.text(R.string.i18n_remote_input_failed_adb, i.name), android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    /**
+     * The remote's input key reached the home screen: the inputs to choose from, or straight to
+     * the TV's own picker where that is the only entry (TCL, Coocaa).
+     */
+    fun showInputs() = withInputs { list ->
+        val only = list.singleOrNull()
+        if (only != null && only.port == null) switchTo(only) else pickInput()
+    }
+
+    /** The remote's HDMI 1–4 keys reached the home screen: straight to that port. */
+    fun switchToHdmi(n: Int) = withInputs { list ->
+        val port = list.firstOrNull { it.port == n }
+        when {
+            port != null -> switchTo(port)
+            // A picker of the TV's own: the port is chosen there.
+            list.size == 1 && list[0].port == null -> switchTo(list[0])
+            else -> pickInput()
+        }
+    }
+
+    /** Runs [then] with the TV's inputs, read first if the panel hasn't been opened yet. */
+    private fun withInputs(then: (List<Input>) -> Unit) {
+        if (inputs.isNotEmpty()) { then(inputs); return }
+        io.execute {
+            val list = tv.inputs()
+            host.post {
+                if (destroyed) return@post
+                inputs = list
+                if (list.isEmpty()) android.widget.Toast.makeText(ctx, I18n.text(R.string.i18n_remote_no_inputs), android.widget.Toast.LENGTH_SHORT).show()
+                else then(list)
+            }
+        }
     }
 
     /** Inputs shown as tiles on the home grid; one press there switches to them. */

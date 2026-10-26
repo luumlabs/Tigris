@@ -17,8 +17,8 @@
     <string name="i18n_controlcenter_015" formatted="false">Brightness</string>
     <string name="i18n_controlcenter_016" formatted="false">Volume</string>
     <string name="i18n_controlcenter_017" formatted="false">Local debugging not authorized: power off, standby and deep clean unavailable</string>
-    <string name="i18n_controlcenter_018" formatted="false">Wired network</string>
-    <string name="i18n_controlcenter_019" formatted="false">Not connected</string>
+    <string name="i18n_controlcenter_018" formatted="false">Ethernet</string>
+    <string name="i18n_controlcenter_019" formatted="false">Offline</string>
     <string name="i18n_controlcenter_020" formatted="false">Connected</string>
     <string name="i18n_controlcenter_021" formatted="false">Input</string>
     <string name="i18n_controlcenter_022" formatted="false">Show on Home Screen…</string>

@@ -1,0 +1,17 @@
+<resources>
+    <!-- Remote keys some firmwares leave to the launcher (RemoteKeys.kt), and input switching. -->
+    <string name="i18n_remote_power_title">Turn Off the TV</string>
+    <string name="i18n_remote_power_off">Power off</string>
+    <string name="i18n_remote_restart">Restart</string>
+    <string name="i18n_remote_try_again">Try Again</string>
+    <string name="i18n_remote_allow">Allow</string>
+    <string name="i18n_remote_cancel">Cancel</string>
+    <string name="i18n_remote_power_unreachable">Tigris turns the TV off through its local debugging, which isn\'t answering. It may have been switched off: choose Try Again, and if the TV asks “Allow debugging?”, check “Always allow” and choose Allow.</string>
+    <string name="i18n_remote_power_needs_adb">To turn the TV off from the remote, Tigris needs local debugging, allowed once. After you choose Allow, the TV asks “Allow debugging?”: check “Always allow” and choose Allow.</string>
+    <string name="i18n_remote_off_here_failed">Couldn\'t turn the TV off from here. Use Power off in the Control Center.</string>
+    <string name="i18n_remote_hdmi_echo">This TV doesn\'t switch inputs from its HDMI keys</string>
+    <string name="i18n_remote_input_failed">Couldn\'t switch to %1$s</string>
+    <string name="i18n_remote_input_failed_adb">Couldn\'t switch to %1$s. Allowing local debugging lets Tigris use the remote\'s input keys.</string>
+    <string name="i18n_remote_no_inputs">This TV doesn\'t list its inputs</string>
+    <string name="i18n_remote_network_limited">Limited</string>
+</resources>

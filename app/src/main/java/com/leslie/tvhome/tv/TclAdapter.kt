@@ -32,10 +32,9 @@ class TclAdapter(ctx: Context) : AndroidAdapter(ctx) {
         if (installed(LIVE_TV)) listOf(Input(URI_PREFIX, I18n.text(R.string.i18n_tcladapter_001), "", false)) else emptyList()
     }
 
-    override fun setInput(i: Input) {
+    override fun setInput(i: Input): Boolean =
         if (i.uri.startsWith(URI_PREFIX)) start(Intent(Intent.ACTION_VIEW).setComponent(ComponentName(LIVE_TV, "$LIVE_TV.TVActivity")))
         else super.setInput(i)
-    }
 
     override fun inputSummary(list: List<Input>) =
         if (list.firstOrNull()?.uri == URI_PREFIX) I18n.text(R.string.i18n_tcladapter_002) else super.inputSummary(list)

@@ -51,7 +51,7 @@ object InputTile {
 class AppRepo(private val ctx: Context) {
     private val pm: PackageManager = ctx.packageManager
     private val prefs = Prefs(ctx)
-    private val tiles = object : LruCache<String, Bitmap>(24 * 1024 * 1024) {
+    private val tiles = object : LruCache<String, Bitmap>((if (Device.isLowEnd(ctx)) 14 else 24) * 1024 * 1024) {
         override fun sizeOf(key: String, value: Bitmap) = value.byteCount
     }
 
@@ -194,6 +194,12 @@ class AppRepo(private val ctx: Context) {
 
     /** Drops the cached tile of [pkg] (it was updated or removed), or of every app. */
     fun invalidate(pkg: String? = null) { if (pkg == null) tiles.evictAll() else tiles.remove(tileKey(pkg)) }
+
+    /**
+     * Keeps only the most recently drawn tiles, about a screenful: the home screen is behind
+     * another app. Tiles still on screen stay in memory with their views either way.
+     */
+    fun trimTiles() = tiles.trimToSize(tiles.maxSize() / 4)
 
     private fun drawCenterCrop(c: Canvas, d: Drawable) {
         val iw = d.intrinsicWidth.takeIf { it > 0 } ?: TILE_W

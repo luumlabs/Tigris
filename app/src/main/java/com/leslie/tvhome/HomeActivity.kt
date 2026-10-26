@@ -872,7 +872,7 @@ class HomeActivity : Activity(), TileAdapter.Listener {
         if (moving >= 0) { endMove(); return }
         val app = adapter.apps.getOrNull(pos) ?: return
         app.folder?.let { openFolder(it); return }
-        app.input?.let { i -> io.execute { tv.setInput(i) }; return }
+        app.input?.let { i -> control.switchTo(i); return }
         // The stock launcher (Xiaomi's PatchWall) can only be opened through the system Home action.
         if (HomeGuardService.isStockHome(app.pkg) && HomeGuardService.openStockLauncher()) {
             rememberOpened(app.pkg)
@@ -1134,9 +1134,11 @@ class HomeActivity : Activity(), TileAdapter.Listener {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         restartIdle()
+        if (RemoteKeys.isPower(event.keyCode)) return remoteKey(event)
         // Any key skips the intro to its closing zoom; nothing behind it reacts meanwhile.
         intro?.let { if (event.action == KeyEvent.ACTION_UP) it.skip(); return true }
         val code = event.keyCode
+        if (remoteKey(event)) return true
         if (event.action == KeyEvent.ACTION_DOWN && code == KeyEvent.KEYCODE_DPAD_RIGHT &&
             sheets.isEmpty() && control.isOpen && avatar.isShown && control.atRightEdge()) {
             control.close()
@@ -1198,6 +1200,76 @@ class HomeActivity : Activity(), TileAdapter.Listener {
         ticker.run()
         control.refresh()
         if (shelfShown && !control.isOpen) resumeShelfRotation()
+    }
+
+    /**
+     * Keys some firmwares leave to their own launcher instead of acting on them: power, settings,
+     * input, the HDMI keys and live TV. Answered on the release of a whole press (RemoteKeys).
+     */
+    private fun remoteKey(e: KeyEvent): Boolean {
+        val code = e.keyCode
+        val known = RemoteKeys.isPower(code) || code == KeyEvent.KEYCODE_SETTINGS || code == KeyEvent.KEYCODE_TV_INPUT ||
+            code in RemoteKeys.HDMI || code in RemoteKeys.LIVE_TV
+        if (!known) return false
+        if (!RemoteKeys.pressed(e)) return true
+        when {
+            RemoteKeys.isPower(code) -> {
+                if (prefs.adbAuthorized) RemoteKeys.standby(this, e) { reached -> powerMenu(reached) } else powerMenu(false)
+            }
+            code == KeyEvent.KEYCODE_SETTINGS -> runCatching { startActivity(tv.settingsIntent().addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                .onFailure { startActivity(Intent(this, SettingsActivity::class.java)) }
+            code == KeyEvent.KEYCODE_TV_INPUT -> control.showInputs()
+            // The HDMI key Tigris sent came back: the firmware passes it on rather than switching.
+            code in RemoteKeys.HDMI -> if (RemoteKeys.isHdmiEcho(e))
+                Toast.makeText(this, I18n.text(R.string.i18n_remote_hdmi_echo), Toast.LENGTH_LONG).show()
+            else control.switchToHdmi(RemoteKeys.HDMI.getValue(code))
+            else -> if (!openLiveTv()) control.showInputs()
+        }
+        return true
+    }
+
+    /**
+     * The power key couldn't put the TV to sleep directly: the ways that remain. [reached] is
+     * whether local debugging answered (the firmware ignored the keys it was sent).
+     */
+    private fun powerMenu(reached: Boolean) {
+        if (sheets.isNotEmpty() || isFinishing) return
+        control.close()
+        val s = Sheet(root).title(I18n.text(R.string.i18n_remote_power_title))
+        when {
+            reached -> s.message(null)
+                .button(I18n.text(R.string.i18n_remote_power_off), R.drawable.ic_power) { Cleaner.shutdown(this) }
+                .button(I18n.text(R.string.i18n_remote_restart), R.drawable.ic_restart) { Cleaner.reboot(this) }
+            prefs.adbAuthorized -> s.message(I18n.text(R.string.i18n_remote_power_unreachable))
+                .button(I18n.text(R.string.i18n_remote_try_again)) { authorizeAdb() }
+            else -> s.message(I18n.text(R.string.i18n_remote_power_needs_adb))
+                .button(I18n.text(R.string.i18n_remote_allow)) { authorizeAdb() }
+        }
+        showSheet(s.button(I18n.text(R.string.i18n_remote_cancel)) {})
+    }
+
+    /** The TV's own live-TV app (a system app that plays TV channels), opened where it was left. */
+    private fun openLiveTv(): Boolean {
+        val probe = Intent(Intent.ACTION_VIEW, android.media.tv.TvContract.buildChannelUri(1))
+        val pkg = runCatching { packageManager.queryIntentActivities(probe, 0) }.getOrDefault(emptyList())
+            .firstOrNull { (it.activityInfo.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0 }
+            ?.activityInfo?.packageName ?: return false
+        val launch = packageManager.getLeanbackLaunchIntentForPackage(pkg) ?: packageManager.getLaunchIntentForPackage(pkg) ?: return false
+        return runCatching { startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); true }.getOrDefault(false)
+    }
+
+    /**
+     * The keeper service holds this process in memory, so the system can't reclaim it as it does
+     * a home screen behind a video app. Tiles that can be drawn again go as soon as the home
+     * screen is hidden, leaving the memory to the app in front, its player and its streaming
+     * engine; the tiles on screen stay, so coming back is instant.
+     */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        val pressed = level == TRIM_MEMORY_RUNNING_LOW || level == TRIM_MEMORY_RUNNING_CRITICAL
+        if (level < TRIM_MEMORY_UI_HIDDEN && !pressed) return
+        if (resumed && !pressed) return
+        repo.trimTiles()
     }
 
     override fun onPause() {

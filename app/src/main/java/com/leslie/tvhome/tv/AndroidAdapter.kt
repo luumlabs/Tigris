@@ -1,10 +1,14 @@
 package com.leslie.tvhome.tv
 
 import com.leslie.tvhome.I18n
+import com.leslie.tvhome.LocalAdb
+import com.leslie.tvhome.Prefs
 import com.leslie.tvhome.R
+import com.leslie.tvhome.RemoteKeys
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.media.AudioManager
 import android.media.tv.TvContract
 import android.media.tv.TvInputInfo
@@ -15,6 +19,9 @@ import android.util.Log
 /** An HDMI input. [uri] is whatever the adapter that listed it needs to switch to it; it is also kept for inputs pinned to the home grid. */
 data class Input(val uri: String, val title: String, val label: String, val connected: Boolean) {
     val name get() = if (label.isNotEmpty()) "$title · $label" else title
+
+    /** The HDMI port it is named after ("HDMI 2", "HDMI2 (ARC)", "HDMI 3/MHL"), if any. */
+    val port: Int? get() = Regex("""HDMI\s*(\d)""", RegexOption.IGNORE_CASE).find("$title $label")?.groupValues?.get(1)?.toIntOrNull()
 }
 
 /** A slider's value and range. [target] is Sony's audio output ("speaker", "headphone"); empty elsewhere. */
@@ -42,7 +49,7 @@ interface TvAdapter {
     fun currentInput(): String?
 
     /** Also called for inputs pinned to the home grid, so it must accept every uri [inputs] has ever returned on this TV. */
-    fun setInput(i: Input)
+    fun setInput(i: Input): Boolean
 
     /** Subtitle of the Control Center's input button when [currentInput] matches none of [list]. */
     fun inputSummary(list: List<Input>): String
@@ -108,8 +115,26 @@ open class AndroidAdapter(protected val ctx: Context) : TvAdapter {
     override fun currentInput(): String? = null
 
     /** Android's way to show an HDMI input: open its passthrough channel in the TV's own player. */
-    override fun setInput(i: Input) {
-        start(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(i.uri)))
+    override fun setInput(i: Input): Boolean {
+        // With a second player for TV channels installed, Android would ask which to use every
+        // time; the TV's own, a system app, is the one meant. With none at all, the remote's HDMI key.
+        val view = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(i.uri))
+        val players = runCatching { ctx.packageManager.queryIntentActivities(view, 0) }.getOrDefault(emptyList())
+        val own = players.filter { (it.activityInfo.applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0 }
+        if (players.size > 1 && own.size == 1) view.setClassName(own[0].activityInfo.packageName, own[0].activityInfo.name)
+        if (players.isNotEmpty() && start(view)) return true
+        return hdmiKey(i)
+    }
+
+    /**
+     * Switches as the remote's HDMI 1–4 key would, through local debugging: the TV app answers
+     * those keys on most firmwares, even where no app takes the passthrough channel.
+     */
+    protected fun hdmiKey(i: Input): Boolean {
+        val port = i.port?.takeIf { it in 1..4 } ?: return false
+        if (!Prefs(ctx).adbAuthorized) return false
+        RemoteKeys.sendingHdmiKey()
+        return LocalAdb.shell(ctx, "input keyevent KEYCODE_TV_INPUT_HDMI_$port") != null
     }
 
     override fun inputSummary(list: List<Input>) =

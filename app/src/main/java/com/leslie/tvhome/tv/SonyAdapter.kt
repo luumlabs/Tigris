@@ -37,9 +37,8 @@ class SonyAdapter(ctx: Context) : AndroidAdapter(ctx) {
 
     override fun currentInput() = Bravia.currentInput()
 
-    override fun setInput(i: Input) {
-        if (i.uri.startsWith(URI_PREFIX)) Bravia.setInput(i.uri) else super.setInput(i)
-    }
+    override fun setInput(i: Input): Boolean =
+        if (i.uri.startsWith(URI_PREFIX)) Bravia.setInput(i.uri) || hdmiKey(i) else super.setInput(i)
 
     /** Sony reports the input being shown, so with Sony's inputs listed and none current, the TV is on the home screen. */
     override fun inputSummary(list: List<Input>) =

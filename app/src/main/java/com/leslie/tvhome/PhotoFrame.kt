@@ -176,7 +176,16 @@ class FrameActivity : Activity() {
 
     override fun dispatchKeyEvent(e: KeyEvent): Boolean = when (e.keyCode) {
         KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.KEYCODE_VOLUME_MUTE,
-        KeyEvent.KEYCODE_POWER, KeyEvent.KEYCODE_HOME -> super.dispatchKeyEvent(e)
+        KeyEvent.KEYCODE_HOME -> super.dispatchKeyEvent(e)
+        // A power key the system passed on (RemoteKeys): the frame closes and the TV sleeps.
+        KeyEvent.KEYCODE_POWER, KeyEvent.KEYCODE_TV_POWER, KeyEvent.KEYCODE_SLEEP, KeyEvent.KEYCODE_SOFT_SLEEP -> {
+            if (RemoteKeys.pressed(e)) {
+                finish()
+                // Without local debugging, closing is all it can do; on the home screen the key offers more.
+                if (Prefs(this).adbAuthorized) RemoteKeys.standby(this, e) {}
+            }
+            true
+        }
         else -> {
             if (!frame.onKey(e) && e.action == KeyEvent.ACTION_UP) finish()
             true
@@ -202,6 +211,14 @@ class PhotoDream : DreamService() {
     }
 
     override fun dispatchKeyEvent(e: KeyEvent): Boolean {
+        // A power key the system passed on (RemoteKeys): to sleep, not back to the home screen.
+        if (RemoteKeys.isPower(e.keyCode)) {
+            if (RemoteKeys.pressed(e)) {
+                if (Prefs(this).adbAuthorized) RemoteKeys.standby(this, e) {}
+                finish()
+            }
+            return true
+        }
         if (frame?.onKey(e) == true) return true
         when (e.keyCode) {
             KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.KEYCODE_VOLUME_MUTE -> return super.dispatchKeyEvent(e)

@@ -19,6 +19,11 @@ class HomeKeyFilterPolicyTest {
         assertTrue(HomeKeyFilterPolicy.shouldRequestFilter(29, true, false))
     }
 
+    @Test fun neverFiltersWhileTigrisIsTheDefaultHome() {
+        for (api in listOf(28, 29, 30, 31, 34)) for (coocaa in listOf(false, true)) for (requested in listOf(false, true))
+            assertFalse(HomeKeyFilterPolicy.shouldRequestFilter(api, coocaa, requested, isDefaultHome = true))
+    }
+
     @Test fun newerAndroidVersionsPreserveOnDemandFiltering() {
         assertFalse(HomeKeyFilterPolicy.shouldRequestFilter(31, true, false))
         assertTrue(HomeKeyFilterPolicy.shouldRequestFilter(31, true, true))

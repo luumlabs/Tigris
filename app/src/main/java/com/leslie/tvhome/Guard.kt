@@ -260,7 +260,7 @@ class HomeGuardService : AccessibilityService() {
         val info = serviceInfo ?: return
         val flag = AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
         val request = HomeKeyFilterPolicy.shouldRequestFilter(
-            Build.VERSION.SDK_INT, CoocaaAdapter.isCoocaa(), on,
+            Build.VERSION.SDK_INT, CoocaaAdapter.isCoocaa(), on, Guard.isDefaultHome(this),
         )
         val want = if (request) info.flags or flag else info.flags and flag.inv()
         if (want == info.flags) return

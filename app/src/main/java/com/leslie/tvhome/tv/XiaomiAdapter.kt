@@ -37,15 +37,16 @@ class XiaomiAdapter(ctx: Context) : AndroidAdapter(ctx) {
     override fun inputUri(input: TvInputInfo): String =
         (if (installed(PLAYER)) hw(input.id)?.let { "$URI_PREFIX${it + 18}" } else null) ?: super.inputUri(input)
 
-    override fun setInput(i: Input) {
+    override fun setInput(i: Input): Boolean {
         if (!i.uri.startsWith(URI_PREFIX)) return super.setInput(i)
-        val n = i.uri.removePrefix(URI_PREFIX).toIntOrNull() ?: return
-        runCatching {
+        val n = i.uri.removePrefix(URI_PREFIX).toIntOrNull() ?: return false
+        return runCatching {
             ctx.startActivity(Intent("com.xiaomi.mitv.tvplayer.EXTSRC_PLAY")
                 .setComponent(ComponentName(PLAYER, "$PLAYER.ExternalSourceActivity"))
                 .putExtra("input", n)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        }.onFailure { Log.w(TAG, "Xiaomi input $n failed", it) }
+            true
+        }.getOrElse { Log.w(TAG, "Xiaomi input $n failed", it); hdmiKey(i) }
     }
 
     override fun settingsIntent() = resolvable(Intent("com.xiaomi.mitv.settings.SETTINGS")

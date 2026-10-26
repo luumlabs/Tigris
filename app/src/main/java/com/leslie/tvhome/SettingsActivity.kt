@@ -628,6 +628,15 @@ class SettingsActivity : Activity() {
     private fun idleMinutes() = Settings.System.getInt(contentResolver, Settings.System.SCREEN_OFF_TIMEOUT, 600_000) / 60_000
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        // A power key the system passed on, as some firmwares do to their own launcher (RemoteKeys).
+        if (RemoteKeys.isPower(keyCode)) {
+            val offHere = I18n.text(R.string.i18n_remote_off_here_failed)
+            if (RemoteKeys.pressed(event)) {
+                if (prefs.adbAuthorized) RemoteKeys.standby(this, event) { android.widget.Toast.makeText(this, offHere, android.widget.Toast.LENGTH_LONG).show() }
+                else android.widget.Toast.makeText(this, offHere, android.widget.Toast.LENGTH_LONG).show()
+            }
+            return true
+        }
         if (keyCode == KeyEvent.KEYCODE_BACK && page != Page.MAIN) {
             show(Page.MAIN, opener)
             return true
@@ -635,6 +644,8 @@ class SettingsActivity : Activity() {
         return super.onKeyUp(keyCode, event)
     }
 
-    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean =
-        if (keyCode == KeyEvent.KEYCODE_BACK && page != Page.MAIN) true else super.onKeyDown(keyCode, event)
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (RemoteKeys.isPower(keyCode)) { RemoteKeys.pressed(event); return true }
+        return if (keyCode == KeyEvent.KEYCODE_BACK && page != Page.MAIN) true else super.onKeyDown(keyCode, event)
+    }
 }
