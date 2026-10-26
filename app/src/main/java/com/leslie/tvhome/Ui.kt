@@ -233,13 +233,19 @@ class Sheet(private val host: FrameLayout) {
 
     fun button(label: String, icon: Int? = null, keepOpen: Boolean = false, action: () -> Unit) = apply {
         val b = PillButton(ctx, label, icon) {
-            if (!keepOpen) dismiss()
-            action()
+            // A second press while the sheet is already leaving must not run another action.
+            if (!dismissing) {
+                if (!keepOpen) dismiss()
+                action()
+            }
         }
         col.addView(b, LinearLayout.LayoutParams(ctx.dp(420), ctx.dp(52)).apply { topMargin = ctx.dp(12) })
     }
 
     fun onDismiss(f: () -> Unit) = apply { onDismiss = f }
+
+    /** Set once [dismiss] has started: the sheet is on its way out. */
+    private var dismissing = false
 
     fun show(): Sheet {
         host.addView(root, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -251,7 +257,8 @@ class Sheet(private val host: FrameLayout) {
     val isShowing get() = root.parent != null
 
     fun dismiss() {
-        if (!isShowing) return
+        if (!isShowing || dismissing) return
+        dismissing = true
         root.animate().alpha(0f).setDuration(140).withEndAction {
             host.removeView(root)
             onDismiss?.invoke()
