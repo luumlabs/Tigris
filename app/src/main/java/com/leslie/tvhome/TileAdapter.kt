@@ -99,7 +99,9 @@ class TileCell(ctx: Context, val tileW: Int, val tileH: Int) : FrameLayout(ctx) 
         val gx0 = sheen.translationX
         val gy0 = sheen.translationY
         sheen.visibility = if (f && tvos || g0 > 0f) VISIBLE else INVISIBLE
-        focusTween.start(if (f) 260 else 170, if (f) Motion.spring else Motion.ease, end = {
+        // A spring spends its first third travelling and the rest settling: a little longer than the
+        // old overshoot curve, so the settle shows, while the tile still arrives as fast.
+        focusTween.start(if (f) 360 else 170, if (f) Motion.spring else Motion.ease, end = {
             if (!f) sheen.visibility = INVISIBLE
         }) { p ->
             val e = p.coerceAtMost(1f)

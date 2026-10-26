@@ -12,7 +12,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
 import android.view.animation.DecelerateInterpolator
-import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -34,20 +33,55 @@ fun View.clipRounded(radiusPx: Float) {
 
 object Motion {
     val ease = DecelerateInterpolator(2f)
-    val spring = OvershootInterpolator(1.6f)
+    /**
+     * Focus: a quick spring that overshoots by a hair (about 3 %) and settles, as tvOS does,
+     * instead of OvershootInterpolator's bounce past the target and straight stop.
+     */
+    val spring = Spring(0.76f)
+    /** A firm spring whose overshoot (about 1 %) reads as weight, not bounce. */
+    val lift = Spring(0.84f)
+    /** A spring with no visible overshoot, for things that should glide rather than bounce. */
+    val soft = Spring(0.95f)
 
-    /** tvOS "bump" when focus cannot move any further in that direction. */
+    /**
+     * tvOS "bump" when focus cannot move any further in that direction: a shove against the edge
+     * that springs back with one small rebound.
+     */
     fun bump(v: View, dx: Int, dy: Int) {
         v.cameraDistance = v.width * 12f
         v.animate().cancel()
         val t = v.getTag(R.id.motion_bump) as? Tween ?: Tween().also { v.setTag(R.id.motion_bump, it) }
-        t.start(260, android.view.animation.LinearInterpolator()) { p ->
-            val f = if (p < 0.5f) p * 2 else (1 - p) * 2
-            v.rotationY = dx * 7f * f
-            v.rotationX = -dy * 7f * f
-            v.translationX = dx * v.dp(5) * f
-            v.translationY = dy * v.dp(5) * f
+        val px = v.dp(6)
+        t.start(380, android.view.animation.LinearInterpolator()) { p ->
+            val f = (kotlin.math.sin(p * Math.PI * 2.2) * (1 - p) * (1 - p)).toFloat()
+            v.rotationY = dx * 6f * f
+            v.rotationX = -dy * 6f * f
+            v.translationX = dx * px * f
+            v.translationY = dy * px * f
         }
+    }
+}
+
+/**
+ * A damped spring from 0 to 1, as a time curve: [damping] 1 is critically damped (no overshoot),
+ * lower values overshoot and settle. The stiffness is chosen so the motion has died down to a
+ * thousandth of its travel by the end of the animation's duration, which therefore sets how fast
+ * it feels: most of the travel happens in the first third, the rest is the settle.
+ */
+class Spring(private val damping: Float = 0.8f) : android.animation.TimeInterpolator {
+    private val zeta = damping.coerceIn(0.3f, 1f).toDouble()
+    // e^(-ζω) = 0.001 at t = 1.
+    private val omega = 6.9 / zeta
+    private val omegaD = omega * kotlin.math.sqrt((1 - zeta * zeta).coerceAtLeast(0.0))
+
+    override fun getInterpolation(t: Float): Float {
+        if (t <= 0f) return 0f
+        if (t >= 1f) return 1f
+        val x = t.toDouble()
+        val decay = kotlin.math.exp(-zeta * omega * x)
+        val v = if (omegaD < 1e-3) 1 - decay * (1 + omega * x)
+        else 1 - decay * (kotlin.math.cos(omegaD * x) + zeta * omega / omegaD * kotlin.math.sin(omegaD * x))
+        return v.toFloat()
     }
 }
 
